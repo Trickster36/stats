@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy Stats Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3b6ef6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Strategy Stats">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --card:#ffffff;
+    --text:#1a1d23;
+    --muted:#6b7280;
+    --border:#e3e5e9;
+    --accent:#3b6ef6;
+    --accent-soft:#eef2ff;
+    --good:#1a9e6b;
+    --good-soft:#e6f7f0;
+    --warn:#d97706;
+    --danger:#e0433f;
+    --danger-soft:#fdecec;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14161a;
+      --card:#1e2126;
+      --text:#eceef1;
+      --muted:#9aa0a8;
+      --border:#2c3037;
+      --accent:#6d8bff;
+      --accent-soft:#232a45;
+      --good:#3ecf8e;
+      --good-soft:#16302a;
+      --warn:#f0a742;
+      --danger:#ff6b66;
+      --danger-soft:#3a2222;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14161a;
+    --card:#1e2126;
+    --text:#eceef1;
+    --muted:#9aa0a8;
+    --border:#2c3037;
+    --accent:#6d8bff;
+    --accent-soft:#232a45;
+    --good:#3ecf8e;
+    --good-soft:#16302a;
+    --warn:#f0a742;
+    --danger:#ff6b66;
+    --danger-soft:#3a2222;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:760px;
+    margin:0 auto;
+    padding:20px 16px 60px;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:18px;
+    gap:8px;
+  }
+  h1{
+    font-size:1.3rem;
+    margin:0;
+    letter-spacing:-0.01em;
+  }
+  .icon-btn{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:10px;
+    width:38px;height:38px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    color:var(--muted);
+    font-size:1.1rem;
+    flex-shrink:0;
+  }
+  .icon-btn:hover{color:var(--text);}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:18px;
+    margin-bottom:16px;
+  }
+  .card h2{
+    font-size:0.95rem;
+    margin:0 0 14px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    font-weight:600;
+  }
+
+  .stats-grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:10px;
+  }
+  .stat{
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px 14px;
+  }
+  .stat.total{grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between;}
+  .stat .label{font-size:0.78rem;color:var(--muted);margin-bottom:4px;}
+  .stat .value{font-size:1.5rem;font-weight:700;line-height:1.1;}
+  .stat .sub{font-size:0.75rem;color:var(--muted);margin-top:3px;}
+  .stat.total .value{font-size:1.7rem;}
+
+  .milestone-row{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .bar-item{display:flex;flex-direction:column;gap:4px;}
+  .bar-item .bar-top{display:flex;justify-content:space-between;font-size:0.85rem;}
+  .bar-track{
+    height:8px;border-radius:5px;background:var(--border);overflow:hidden;
+  }
+  .bar-fill{height:100%;border-radius:5px;background:var(--accent);}
+  .bar-fill.be{background:var(--warn);}
+
+  .toggle-grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .toggle{
+    border:1px solid var(--border);
+    background:var(--bg);
+    border-radius:10px;
+    padding:12px 6px;
+    text-align:center;
+    cursor:pointer;
+    user-select:none;
+    transition:background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .toggle .t-label{display:block;font-size:0.72rem;color:var(--muted);margin-bottom:4px;}
+  .toggle .t-state{display:block;font-size:0.95rem;font-weight:600;}
+  .toggle.on{background:var(--accent-soft);border-color:var(--accent);}
+  .toggle.on .t-state{color:var(--accent);}
+  .toggle.be-toggle.on{background:var(--good-soft);border-color:var(--good);}
+  .toggle.be-toggle.on .t-state{color:var(--good);}
+  .toggle.disabled{opacity:0.4;cursor:not-allowed;}
+
+  .r-input-wrap{margin-bottom:14px;}
+  .r-input-wrap label{display:block;font-size:0.78rem;color:var(--muted);margin-bottom:6px;}
+  .r-input-wrap input{
+    width:100%;
+    padding:12px 14px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--text);
+    font-size:1rem;
+    font-weight:600;
+  }
+  .r-input-wrap .hint{font-size:0.72rem;color:var(--muted);margin-top:5px;}
+
+  .outcome-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}
+  .outcome{
+    border:1px solid var(--border);
+    background:var(--bg);
+    border-radius:10px;
+    padding:12px 14px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    transition:background 0.12s, border-color 0.12s;
+  }
+  .outcome .oc-text{display:flex;flex-direction:column;gap:2px;}
+  .outcome .oc-title{font-size:0.85rem;font-weight:600;}
+  .outcome .oc-desc{font-size:0.72rem;color:var(--muted);}
+  .outcome .oc-r{
+    font-size:0.95rem;
+    font-weight:700;
+    color:var(--muted);
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .outcome.selected{background:var(--accent-soft);border-color:var(--accent);}
+  .outcome.selected .oc-r{color:var(--accent);}
+  .outcome.selected .oc-desc{color:var(--text);}
+
+  .add-btn{
+    width:100%;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    border-radius:10px;
+    padding:13px;
+    font-size:0.95rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .add-btn:active{opacity:0.85;}
+
+  .log-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;}
+  .log-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:0.85rem;
+  }
+  .log-item .tags{display:flex;gap:6px;flex-wrap:wrap;}
+  .tag{
+    font-size:0.7rem;
+    padding:3px 7px;
+    border-radius:6px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    color:var(--muted);
+  }
+  .tag.hit{background:var(--accent-soft);color:var(--accent);border-color:transparent;}
+  .tag.be{background:var(--good-soft);color:var(--good);border-color:transparent;}
+  .tag.loss{background:var(--danger-soft);color:var(--danger);border-color:transparent;}
+  .log-item .num{color:var(--muted);font-size:0.75rem;width:26px;flex-shrink:0;}
+  .del-btn{
+    background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;
+    padding:2px 6px; flex-shrink:0;
+  }
+  .del-btn:hover{color:var(--danger);}
+  .empty{color:var(--muted);font-size:0.85rem;text-align:center;padding:20px 0;}
+
+  .settings-fields{display:flex;flex-direction:column;gap:10px;}
+  .settings-fields label{font-size:0.78rem;color:var(--muted);}
+  .settings-fields input{
+    width:100%;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--text);
+    font-size:0.9rem;
+    margin-top:4px;
+  }
+  .row-btns{display:flex;gap:8px;margin-top:6px;}
+  .btn-secondary{
+    flex:1;
+    background:var(--bg);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:10px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:0.85rem;
+    font-weight:600;
+  }
+  .btn-primary{
+    flex:1;
+    background:var(--accent);
+    border:none;
+    color:#fff;
+    padding:10px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:0.85rem;
+    font-weight:600;
+  }
+  .status-line{font-size:0.78rem;color:var(--muted);margin-top:8px;min-height:16px;}
+  .status-line.err{color:var(--danger);}
+  .status-line.ok{color:var(--good);}
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,0.4);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;z-index:50;
+  }
+  .modal-backdrop.hidden{display:none;}
+  .modal{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:20px;
+    max-width:420px;
+    width:100%;
+    max-height:85vh;
+    overflow-y:auto;
+    box-shadow:var(--shadow);
+  }
+  .modal h2{margin-top:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Strategy Stats</h1>
+    <button class="icon-btn" id="settingsBtn" title="GitHub storage settings">⚙</button>
+  </header>
+
+  <div class="card">
+    <h2>Overview</h2>
+    <div class="stats-grid">
+      <div class="stat total">
+        <div>
+          <div class="label">Total trades logged</div>
+          <div class="value" id="totalTrades">0</div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="label">Total R</div>
+        <div class="value" id="totalR">0R</div>
+      </div>
+      <div class="stat">
+        <div class="label">Expectancy</div>
+        <div class="value" id="expectancy">0R</div>
+        <div class="sub">avg R per trade</div>
+      </div>
+      <div class="stat">
+        <div class="label">Max drawdown</div>
+        <div class="value" id="maxDrawdown">0R</div>
+        <div class="sub">worst peak-to-trough</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Milestones hit</h2>
+    <div class="milestone-row" id="milestoneBars"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log a trade</h2>
+    <div class="outcome-list" id="outcomeList"></div>
+    <button class="add-btn" id="addTradeBtn">Add Trade</button>
+  </div>
+
+  <div class="card">
+    <h2>Trade log</h2>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="settingsModal">
+  <div class="modal">
+    <h2>GitHub Storage</h2>
+    <div class="settings-fields">
+      <div>
+        <label>Repo owner</label>
+        <input type="text" id="ghOwner" placeholder="e.g. trickster">
+      </div>
+      <div>
+        <label>Repo name</label>
+        <input type="text" id="ghRepo" placeholder="e.g. strategy-data">
+      </div>
+      <div>
+        <label>File path</label>
+        <input type="text" id="ghPath" placeholder="e.g. strategy-stats.json">
+      </div>
+      <div>
+        <label>Branch</label>
+        <input type="text" id="ghBranch" placeholder="main">
+      </div>
+      <div>
+        <label>Personal Access Token</label>
+        <input type="password" id="ghToken" placeholder="ghp_...">
+      </div>
+    </div>
+    <div class="row-btns">
+      <button class="btn-secondary" id="loadBtn">Load from GitHub</button>
+      <button class="btn-primary" id="saveBtn">Save to GitHub</button>
+    </div>
+    <div class="status-line" id="ghStatus"></div>
+    <div class="row-btns" style="margin-top:14px;">
+      <button class="btn-secondary" id="closeSettingsBtn" style="flex:1;">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const OUTCOMES = [
+    { id:'noHit',   title:"Reversed before 1.5R",        desc:"Didn't hit 1.5R, price reversed to SL", r:-1,   r15:false, r2:false, r3:false, be:false },
+    { id:'partial', title:"1.5R hit, then SL",            desc:"Hit 1.5R, 2nd trade then hit original SL", r:0.25, r15:true,  r2:false, r3:false, be:false },
+    { id:'be',      title:"1.5R & 2R hit, then BE stop",  desc:"Hit 1.5R and 2R, pulled back and stopped at breakeven", r:0.75, r15:true, r2:true, r3:false, be:true },
+    { id:'full',    title:"Both targets hit",             desc:"1.5R and 3R both hit — full runner", r:2.25, r15:true, r2:true, r3:true, be:false }
+  ];
+
+  let selectedOutcome = null;
+
+  const state = {
+    trades: [], // each: {r15:bool, r2:bool, r3:bool, be:bool, r:number, scenario:string, ts:number}
+    settings: { owner:'', repo:'', path:'strategy-stats.json', branch:'main', token:'' },
+    sha: null
+  };
+
+  function safeLocalGet(key){
+    try { return localStorage.getItem(key); } catch(e){ return null; }
+  }
+  function safeLocalSet(key, val){
+    try { localStorage.setItem(key, val); } catch(e){ /* ignore */ }
+  }
+
+  function loadLocal(){
+    try {
+      const raw = safeLocalGet('strategyStats_trades');
+      if (raw) state.trades = JSON.parse(raw);
+    } catch(e){ state.trades = []; }
+    try {
+      const s = safeLocalGet('strategyStats_settings');
+      if (s) Object.assign(state.settings, JSON.parse(s));
+    } catch(e){ /* ignore */ }
+  }
+
+  function persistLocal(){
+    safeLocalSet('strategyStats_trades', JSON.stringify(state.trades));
+  }
+
+  function persistSettings(){
+    safeLocalSet('strategyStats_settings', JSON.stringify(state.settings));
+  }
+
+  function render(){
+    const total = state.trades.length;
+    document.getElementById('totalTrades').textContent = total;
+
+    const c15 = state.trades.filter(t=>t.r15).length;
+    const c2 = state.trades.filter(t=>t.r2).length;
+    const c3 = state.trades.filter(t=>t.r3).length;
+    const cBe = state.trades.filter(t=>t.be).length;
+
+    const pct = (n)=> total ? Math.round((n/total)*100) : 0;
+    const pctOf2R = c2 ? Math.round((cBe/c2)*100) : 0;
+
+    const fmtR = (n)=> (n>0?'+':'') + (Math.round(n*100)/100) + 'R';
+
+    const totalR = state.trades.reduce((sum,t)=> sum + (Number(t.r)||0), 0);
+    const expectancy = total ? totalR/total : 0;
+
+    let peak = 0, running = 0, maxDD = 0;
+    state.trades.forEach(t=>{
+      running += (Number(t.r)||0);
+      if (running > peak) peak = running;
+      const dd = peak - running;
+      if (dd > maxDD) maxDD = dd;
+    });
+
+    document.getElementById('totalR').textContent = fmtR(totalR);
+    document.getElementById('expectancy').textContent = fmtR(expectancy);
+    document.getElementById('maxDrawdown').textContent = maxDD ? ('-' + (Math.round(maxDD*100)/100) + 'R') : '0R';
+
+    const bars = [
+      {label:'1.5R', count:c15, pct: pct(c15)},
+      {label:'2R', count:c2, pct: pct(c2)},
+      {label:'3R', count:c3, pct: pct(c3)},
+    ];
+
+    const barsHtml = bars.map(b => `
+      <div class="bar-item">
+        <div class="bar-top"><span>${b.label}</span><span>${b.count} / ${total} (${b.pct}%)</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${b.pct}%"></div></div>
+      </div>
+    `).join('') + `
+      <div class="bar-item">
+        <div class="bar-top"><span>Retested to BE after 2R</span><span>${cBe} / ${c2} (${pctOf2R}%)</span></div>
+        <div class="bar-track"><div class="bar-fill be" style="width:${pctOf2R}%"></div></div>
+      </div>
+    `;
+    document.getElementById('milestoneBars').innerHTML = barsHtml;
+
+    const listEl = document.getElementById('logList');
+    if (!state.trades.length){
+      listEl.innerHTML = '<div class="empty">No trades logged yet</div>';
+    } else {
+      listEl.innerHTML = state.trades.slice().reverse().map((t, idxRev) => {
+        const idx = state.trades.length - 1 - idxRev;
+        const tags = [];
+        const rNum = Number(t.r)||0;
+        const o = OUTCOMES.find(x=>x.id===t.scenario);
+        tags.push(`<span class="tag ${rNum>0?'hit':(rNum<0?'loss':'')}">${(rNum>0?'+':'')}${Math.round(rNum*100)/100}R</span>`);
+        if (o) tags.push(`<span class="tag">${o.title}</span>`);
+        else {
+          tags.push(`<span class="tag ${t.r15?'hit':''}">1.5R</span>`);
+          tags.push(`<span class="tag ${t.r2?'hit':''}">2R</span>`);
+          tags.push(`<span class="tag ${t.r3?'hit':''}">3R</span>`);
+          if (t.r2) tags.push(`<span class="tag ${t.be?'be':''}">${t.be?'BE hit':'No BE'}</span>`);
+        }
+        return `<div class="log-item">
+          <span class="num">#${idx+1}</span>
+          <div class="tags">${tags.join('')}</div>
+          <button class="del-btn" data-idx="${idx}">✕</button>
+        </div>`;
+      }).join('');
+      listEl.querySelectorAll('.del-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const idx = parseInt(btn.getAttribute('data-idx'),10);
+          state.trades.splice(idx,1);
+          persistLocal();
+          render();
+        });
+      });
+    }
+  }
+
+  function renderOutcomeList(){
+    const listEl = document.getElementById('outcomeList');
+    listEl.innerHTML = OUTCOMES.map(o => `
+      <div class="outcome ${selectedOutcome===o.id?'selected':''}" data-id="${o.id}">
+        <div class="oc-text">
+          <span class="oc-title">${o.title}</span>
+          <span class="oc-desc">${o.desc}</span>
+        </div>
+        <span class="oc-r">${o.r>0?'+':''}${o.r}R</span>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('.outcome').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        selectedOutcome = el.getAttribute('data-id');
+        renderOutcomeList();
+      });
+    });
+  }
+
+  document.getElementById('addTradeBtn').addEventListener('click', ()=>{
+    if (!selectedOutcome) return;
+    const o = OUTCOMES.find(x=>x.id===selectedOutcome);
+    state.trades.push({
+      r15: o.r15, r2: o.r2, r3: o.r3, be: o.be,
+      r: o.r, scenario: o.id,
+      ts: Date.now()
+    });
+    selectedOutcome = null;
+    renderOutcomeList();
+    persistLocal();
+    render();
+  });
+
+  // Settings modal
+  const modal = document.getElementById('settingsModal');
+  document.getElementById('settingsBtn').addEventListener('click', ()=>{
+    document.getElementById('ghOwner').value = state.settings.owner || '';
+    document.getElementById('ghRepo').value = state.settings.repo || '';
+    document.getElementById('ghPath').value = state.settings.path || 'strategy-stats.json';
+    document.getElementById('ghBranch').value = state.settings.branch || 'main';
+    document.getElementById('ghToken').value = state.settings.token || '';
+    document.getElementById('ghStatus').textContent = '';
+    modal.classList.remove('hidden');
+  });
+  document.getElementById('closeSettingsBtn').addEventListener('click', ()=>{
+    modal.classList.add('hidden');
+  });
+
+  function readSettingsFromForm(){
+    state.settings.owner = document.getElementById('ghOwner').value.trim();
+    state.settings.repo = document.getElementById('ghRepo').value.trim();
+    state.settings.path = document.getElementById('ghPath').value.trim() || 'strategy-stats.json';
+    state.settings.branch = document.getElementById('ghBranch').value.trim() || 'main';
+    state.settings.token = document.getElementById('ghToken').value.trim();
+    persistSettings();
+  }
+
+  function setStatus(msg, type){
+    const el = document.getElementById('ghStatus');
+    el.textContent = msg;
+    el.className = 'status-line' + (type ? ' ' + type : '');
+  }
+
+  function apiUrl(){
+    const { owner, repo, path } = state.settings;
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  }
+
+  async function loadFromGitHub(){
+    readSettingsFromForm();
+    if (!state.settings.owner || !state.settings.repo || !state.settings.token){
+      setStatus('Fill in owner, repo, and token first.', 'err');
+      return;
+    }
+    setStatus('Loading…');
+    try {
+      const res = await fetch(`${apiUrl()}?ref=${encodeURIComponent(state.settings.branch)}`, {
+        headers: {
+          'Authorization': `Bearer ${state.settings.token}`,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (res.status === 404){
+        setStatus('No file found yet — save to create it.', 'err');
+        state.sha = null;
+        return;
+      }
+      if (!res.ok){
+        setStatus(`Load failed: ${res.status} ${res.statusText}`, 'err');
+        return;
+      }
+      const data = await res.json();
+      state.sha = data.sha;
+      const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));
+      const parsed = JSON.parse(decoded);
+      state.trades = Array.isArray(parsed.trades) ? parsed.trades : [];
+      persistLocal();
+      render();
+      setStatus('Loaded from GitHub.', 'ok');
+    } catch(e){
+      setStatus('Load error: ' + e.message, 'err');
+    }
+  }
+
+  async function saveToGitHub(){
+    readSettingsFromForm();
+    if (!state.settings.owner || !state.settings.repo || !state.settings.token){
+      setStatus('Fill in owner, repo, and token first.', 'err');
+      return;
+    }
+    setStatus('Saving…');
+    try {
+      const payload = { trades: state.trades, updated: new Date().toISOString() };
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2))));
+      const body = {
+        message: `Update strategy stats (${state.trades.length} trades)`,
+        content,
+        branch: state.settings.branch
+      };
+      if (state.sha) body.sha = state.sha;
+      const res = await fetch(apiUrl(), {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${state.settings.token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok){
+        const errText = await res.text();
+        setStatus(`Save failed: ${res.status} ${res.statusText}`, 'err');
+        console.error(errText);
+        return;
+      }
+      const data = await res.json();
+      state.sha = data.content.sha;
+      setStatus('Saved to GitHub.', 'ok');
+    } catch(e){
+      setStatus('Save error: ' + e.message, 'err');
+    }
+  }
+
+  document.getElementById('loadBtn').addEventListener('click', loadFromGitHub);
+  document.getElementById('saveBtn').addEventListener('click', saveToGitHub);
+
+  loadLocal();
+  renderOutcomeList();
+  render();
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+    });
+  }
+</script>
+</body>
+</html>
