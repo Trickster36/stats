@@ -212,6 +212,45 @@
   .outcome.selected .oc-r{color:var(--accent);}
   .outcome.selected .oc-desc{color:var(--text);}
 
+  .card-head-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .export-btn{
+    background:var(--bg);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:0.75rem;
+    font-weight:600;
+  }
+  .export-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .export-btn-group{display:flex;gap:8px;}
+
+  #printArea{display:none;}
+
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{
+      display:block;
+      position:absolute;
+      top:0;left:0;
+      width:100%;
+      background:#fff;
+      color:#000;
+    }
+    #printTitle{font-size:1.3rem;margin:0 0 4px;}
+    #printMeta{font-size:0.85rem;color:#444;margin-bottom:16px;}
+    #printTable{width:100%;border-collapse:collapse;font-size:0.85rem;}
+    #printTable th, #printTable td{
+      border:1px solid #999;
+      padding:6px 8px;
+      text-align:left;
+    }
+    #printTable th{background:#eee;}
+    #printTable tr{page-break-inside:avoid;}
+  }
+
   .add-btn{
     width:100%;
     background:var(--accent);
@@ -357,9 +396,35 @@
   </div>
 
   <div class="card">
-    <h2>Trade log</h2>
+    <div class="card-head-row">
+      <h2 style="margin:0;">Trade log</h2>
+      <div class="export-btn-group">
+        <button class="export-btn" id="exportCsvBtn">Export CSV</button>
+        <button class="export-btn" id="exportPdfBtn">Export PDF</button>
+      </div>
+    </div>
     <div class="log-list" id="logList"></div>
   </div>
+</div>
+
+<div id="printArea">
+  <h1 id="printTitle">Strategy Stats — Trade Log</h1>
+  <div id="printMeta"></div>
+  <table id="printTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Timestamp</th>
+        <th>Outcome</th>
+        <th>R</th>
+        <th>1.5R</th>
+        <th>2R</th>
+        <th>3R</th>
+        <th>BE after 2R</th>
+      </tr>
+    </thead>
+    <tbody id="printTableBody"></tbody>
+  </table>
 </div>
 
 <div class="modal-backdrop hidden" id="settingsModal">
@@ -627,6 +692,22 @@
     }
   }
 
+  async function fetchExistingSha(){
+    try {
+      const res = await fetch(`${apiUrl()}?ref=${encodeURIComponent(state.settings.branch)}`, {
+        headers: {
+          'Authorization': `Bearer ${state.settings.token}`,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (res.ok){
+        const data = await res.json();
+        return data.sha;
+      }
+    } catch(e){ /* ignore — treated as new file */ }
+    return null;
+  }
+
   async function saveToGitHub(){
     readSettingsFromForm();
     if (!state.settings.owner || !state.settings.repo || !state.settings.token){
@@ -635,6 +716,12 @@
     }
     setStatus('Saving…');
     try {
+      // If we don't already know the file's current sha (e.g. you didn't Load
+      // first in this browser), fetch it now — GitHub requires the current sha
+      // to overwrite a file that already exists, otherwise it returns 422.
+      if (!state.sha){
+        state.sha = await fetchExistingSha();
+      }
       const payload = { trades: state.trades, updated: new Date().toISOString() };
       const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2))));
       const body = {
@@ -653,9 +740,12 @@
         body: JSON.stringify(body)
       });
       if (!res.ok){
-        const errText = await res.text();
-        setStatus(`Save failed: ${res.status} ${res.statusText}`, 'err');
-        console.error(errText);
+        let msg = `${res.status} ${res.statusText}`;
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.message) msg = `${res.status}: ${errJson.message}`;
+        } catch(e){ /* body wasn't JSON, keep default msg */ }
+        setStatus(`Save failed — ${msg}`, 'err');
         return;
       }
       const data = await res.json();
@@ -668,6 +758,76 @@
 
   document.getElementById('loadBtn').addEventListener('click', loadFromGitHub);
   document.getElementById('saveBtn').addEventListener('click', saveToGitHub);
+
+  function csvEscape(val){
+    const s = String(val);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function exportCsv(){
+    const header = ['#','Timestamp','Outcome','R','1.5R Hit','2R Hit','3R Hit','BE After 2R'];
+    const rows = state.trades.map((t, i) => {
+      const o = OUTCOMES.find(x => x.id === t.scenario);
+      const ts = t.ts ? new Date(t.ts).toISOString() : '';
+      return [
+        i + 1,
+        ts,
+        o ? o.title : (t.scenario || ''),
+        Number(t.r) || 0,
+        t.r15 ? 'Yes' : 'No',
+        t.r2 ? 'Yes' : 'No',
+        t.r3 ? 'Yes' : 'No',
+        t.r2 ? (t.be ? 'Yes' : 'No') : ''
+      ];
+    });
+    const csv = [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `strategy-stats-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+
+  function exportPdf(){
+    const tbody = document.getElementById('printTableBody');
+    const rowsHtml = state.trades.map((t, i) => {
+      const o = OUTCOMES.find(x => x.id === t.scenario);
+      const ts = t.ts ? new Date(t.ts).toLocaleString() : '';
+      const outcomeLabel = o ? o.title : (t.scenario || '');
+      const rNum = Number(t.r) || 0;
+      const rLabel = (rNum > 0 ? '+' : '') + (Math.round(rNum*100)/100) + 'R';
+      const beLabel = t.r2 ? (t.be ? 'Yes' : 'No') : '—';
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${ts}</td>
+        <td>${outcomeLabel}</td>
+        <td>${rLabel}</td>
+        <td>${t.r15 ? 'Yes' : 'No'}</td>
+        <td>${t.r2 ? 'Yes' : 'No'}</td>
+        <td>${t.r3 ? 'Yes' : 'No'}</td>
+        <td>${beLabel}</td>
+      </tr>`;
+    }).join('');
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="8">No trades logged yet</td></tr>`;
+
+    const total = state.trades.length;
+    const totalR = state.trades.reduce((sum,t)=> sum + (Number(t.r)||0), 0);
+    const generated = new Date().toLocaleString();
+    document.getElementById('printMeta').textContent =
+      `${total} trades logged in order · Total R: ${(totalR>0?'+':'')}${Math.round(totalR*100)/100}R · Generated ${generated}`;
+
+    window.print();
+  }
+
+  document.getElementById('exportPdfBtn').addEventListener('click', exportPdf);
 
   loadLocal();
   renderOutcomeList();
