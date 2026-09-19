@@ -1,4 +1,4 @@
-const CACHE_NAME = 'strategy-stats-v1';
+const CACHE_NAME = 'strategy-stats-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -23,24 +23,26 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Only cache same-origin GET requests for the app shell.
-// Cross-origin calls (e.g. api.github.com for saving/loading your data)
-// always go straight to the network so you never get stale trade data.
+// Network-first for the app shell: always try to fetch the latest version
+// when online, and only fall back to the cached copy if the network fails
+// (offline use). This means uploading a new index.html/service-worker.js
+// takes effect on your next reload, instead of getting stuck on an old
+// cached version.
+//
+// Cross-origin calls (e.g. api.github.com for saving/loading your trade
+// data) are left alone entirely -- they always go straight to the network.
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
     return;
   }
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      const networkFetch = fetch(event.request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => cached);
-      return cached || networkFetch;
-    })
+    fetch(event.request)
+      .then(response => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
