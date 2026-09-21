@@ -1,3 +1,23 @@
 {
-  "trades": [ ]
+  "trades": [
+    {
+      "r15": true,
+      "r2": true,
+      "r3": false,
+      "be": true,
+      "r": 0.75,
+      "scenario": "be",
+      "ts": 1790020472573
+    },
+    {
+      "r15": true,
+      "r2": true,
+      "r3": true,
+      "be": false,
+      "r": 2.25,
+      "scenario": "full",
+      "ts": 1790020474212
+    }
+  ],
+  "updated": "2026-09-21T19:54:39.349Z"
 }
