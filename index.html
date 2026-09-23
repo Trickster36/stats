@@ -170,6 +170,10 @@
   .toggle.be-toggle.on{background:var(--good-soft);border-color:var(--good);}
   .toggle.be-toggle.on .t-state{color:var(--good);}
   .toggle.disabled{opacity:0.4;cursor:not-allowed;}
+  .toggle-grid.cols-2{grid-template-columns:repeat(2,1fr);}
+
+  .strategy-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .strategy-stats .stat .value{font-size:1.3rem;}
 
   .r-input-wrap{margin-bottom:14px;}
   .r-input-wrap label{display:block;font-size:0.78rem;color:var(--muted);margin-bottom:6px;}
@@ -390,7 +394,25 @@
   </div>
 
   <div class="card">
+    <h2>By strategy</h2>
+    <div class="strategy-stats" id="strategyStats"></div>
+  </div>
+
+  <div class="card">
     <h2>Log a trade</h2>
+    <div class="r-input-wrap">
+      <label>Setup</label>
+      <div class="toggle-grid cols-2" id="strategyToggle">
+        <div class="toggle" data-strategy="A">
+          <span class="t-label">Strategy</span>
+          <span class="t-state">A</span>
+        </div>
+        <div class="toggle" data-strategy="B">
+          <span class="t-label">Strategy</span>
+          <span class="t-state">B</span>
+        </div>
+      </div>
+    </div>
     <div class="outcome-list" id="outcomeList"></div>
     <button class="add-btn" id="addTradeBtn">Add Trade</button>
   </div>
@@ -415,12 +437,12 @@
       <tr>
         <th>#</th>
         <th>Timestamp</th>
+        <th>Strategy</th>
         <th>Outcome</th>
         <th>R</th>
         <th>1.5R</th>
-        <th>2R</th>
         <th>3R</th>
-        <th>BE after 2R</th>
+        <th>BE after 1.5R</th>
       </tr>
     </thead>
     <tbody id="printTableBody"></tbody>
@@ -465,17 +487,20 @@
 
 <script>
 (function(){
+  // Two half-size trades run per setup (0.5R risk each, 1R combined risk).
+  // Trade 1 always exits at 1.5R. Trade 2 runs to 3R, and its SL moves to
+  // breakeven the moment trade 1's 1.5R target is hit.
   const OUTCOMES = [
-    { id:'noHit',   title:"Reversed before 1.5R",        desc:"Didn't hit 1.5R, price reversed to SL", r:-1,   r15:false, r2:false, r3:false, be:false },
-    { id:'partial', title:"1.5R hit, then SL",            desc:"Hit 1.5R, 2nd trade then hit original SL", r:0.25, r15:true,  r2:false, r3:false, be:false },
-    { id:'be',      title:"1.5R & 2R hit, then BE stop",  desc:"Hit 1.5R and 2R, pulled back and stopped at breakeven", r:0.75, r15:true, r2:true, r3:false, be:true },
-    { id:'full',    title:"Both targets hit",             desc:"1.5R and 3R both hit — full runner", r:2.25, r15:true, r2:true, r3:true, be:false }
+    { id:'noHit',   title:"Reversed before 1.5R",     desc:"Never hit 1.5R — both trades stopped at initial SL", r:-1,   r15:false, r3:false, be:false },
+    { id:'beAfter', title:"Reversed after 1.5R (BE)",  desc:"Trade 1 secured 1.5R, trade 2's SL moved to BE and got stopped there", r:0.75, r15:true,  r3:false, be:true },
+    { id:'full',    title:"Hit both targets",          desc:"Trade 1 secured 1.5R, trade 2 ran to 3R — full runner", r:2.25, r15:true, r3:true, be:false }
   ];
 
   let selectedOutcome = null;
+  let selectedStrategy = null;
 
   const state = {
-    trades: [], // each: {r15:bool, r2:bool, r3:bool, be:bool, r:number, scenario:string, ts:number}
+    trades: [], // each: {r15:bool, r3:bool, be:bool, r:number, scenario:string, strategy:'A'|'B', ts:number}
     settings: { owner:'', repo:'', path:'strategy-stats.json', branch:'main', token:'' },
     sha: null
   };
@@ -511,12 +536,11 @@
     document.getElementById('totalTrades').textContent = total;
 
     const c15 = state.trades.filter(t=>t.r15).length;
-    const c2 = state.trades.filter(t=>t.r2).length;
     const c3 = state.trades.filter(t=>t.r3).length;
     const cBe = state.trades.filter(t=>t.be).length;
 
     const pct = (n)=> total ? Math.round((n/total)*100) : 0;
-    const pctOf2R = c2 ? Math.round((cBe/c2)*100) : 0;
+    const pctOf15R = c15 ? Math.round((cBe/c15)*100) : 0;
 
     const fmtR = (n)=> (n>0?'+':'') + (Math.round(n*100)/100) + 'R';
 
@@ -537,7 +561,6 @@
 
     const bars = [
       {label:'1.5R', count:c15, pct: pct(c15)},
-      {label:'2R', count:c2, pct: pct(c2)},
       {label:'3R', count:c3, pct: pct(c3)},
     ];
 
@@ -548,11 +571,27 @@
       </div>
     `).join('') + `
       <div class="bar-item">
-        <div class="bar-top"><span>Retested to BE after 2R</span><span>${cBe} / ${c2} (${pctOf2R}%)</span></div>
-        <div class="bar-track"><div class="bar-fill be" style="width:${pctOf2R}%"></div></div>
+        <div class="bar-top"><span>Stopped at BE after 1.5R</span><span>${cBe} / ${c15} (${pctOf15R}%)</span></div>
+        <div class="bar-track"><div class="bar-fill be" style="width:${pctOf15R}%"></div></div>
       </div>
     `;
     document.getElementById('milestoneBars').innerHTML = barsHtml;
+
+    const stratStatsHtml = ['A','B'].map(s => {
+      const trades = state.trades.filter(t=>t.strategy===s);
+      const n = trades.length;
+      const r = trades.reduce((sum,t)=> sum + (Number(t.r)||0), 0);
+      const wins = trades.filter(t=>(Number(t.r)||0) > 0).length;
+      const wr = n ? Math.round((wins/n)*100) : 0;
+      return `
+        <div class="stat">
+          <div class="label">Strategy ${s}</div>
+          <div class="value">${n} trade${n===1?'':'s'}</div>
+          <div class="sub">${(r>0?'+':'') + (Math.round(r*100)/100)}R · ${wr}% win rate</div>
+        </div>
+      `;
+    }).join('');
+    document.getElementById('strategyStats').innerHTML = stratStatsHtml;
 
     const listEl = document.getElementById('logList');
     if (!state.trades.length){
@@ -564,12 +603,12 @@
         const rNum = Number(t.r)||0;
         const o = OUTCOMES.find(x=>x.id===t.scenario);
         tags.push(`<span class="tag ${rNum>0?'hit':(rNum<0?'loss':'')}">${(rNum>0?'+':'')}${Math.round(rNum*100)/100}R</span>`);
+        if (t.strategy) tags.push(`<span class="tag">Strategy ${t.strategy}</span>`);
         if (o) tags.push(`<span class="tag">${o.title}</span>`);
         else {
           tags.push(`<span class="tag ${t.r15?'hit':''}">1.5R</span>`);
-          tags.push(`<span class="tag ${t.r2?'hit':''}">2R</span>`);
           tags.push(`<span class="tag ${t.r3?'hit':''}">3R</span>`);
-          if (t.r2) tags.push(`<span class="tag ${t.be?'be':''}">${t.be?'BE hit':'No BE'}</span>`);
+          if (t.r15) tags.push(`<span class="tag ${t.be?'be':''}">${t.be?'BE hit':'No BE'}</span>`);
         }
         return `<div class="log-item">
           <span class="num">#${idx+1}</span>
@@ -607,16 +646,31 @@
     });
   }
 
+  function renderStrategyToggle(){
+    document.querySelectorAll('#strategyToggle .toggle').forEach(el=>{
+      el.classList.toggle('on', el.getAttribute('data-strategy')===selectedStrategy);
+    });
+  }
+  document.querySelectorAll('#strategyToggle .toggle').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedStrategy = el.getAttribute('data-strategy');
+      renderStrategyToggle();
+    });
+  });
+
   document.getElementById('addTradeBtn').addEventListener('click', ()=>{
-    if (!selectedOutcome) return;
+    if (!selectedOutcome || !selectedStrategy) return;
     const o = OUTCOMES.find(x=>x.id===selectedOutcome);
     state.trades.push({
-      r15: o.r15, r2: o.r2, r3: o.r3, be: o.be,
+      r15: o.r15, r3: o.r3, be: o.be,
       r: o.r, scenario: o.id,
+      strategy: selectedStrategy,
       ts: Date.now()
     });
     selectedOutcome = null;
+    selectedStrategy = null;
     renderOutcomeList();
+    renderStrategyToggle();
     persistLocal();
     render();
   });
@@ -766,19 +820,19 @@
   }
 
   function exportCsv(){
-    const header = ['#','Timestamp','Outcome','R','1.5R Hit','2R Hit','3R Hit','BE After 2R'];
+    const header = ['#','Timestamp','Strategy','Outcome','R','1.5R Hit','3R Hit','BE After 1.5R'];
     const rows = state.trades.map((t, i) => {
       const o = OUTCOMES.find(x => x.id === t.scenario);
       const ts = t.ts ? new Date(t.ts).toISOString() : '';
       return [
         i + 1,
         ts,
+        t.strategy || '',
         o ? o.title : (t.scenario || ''),
         Number(t.r) || 0,
         t.r15 ? 'Yes' : 'No',
-        t.r2 ? 'Yes' : 'No',
         t.r3 ? 'Yes' : 'No',
-        t.r2 ? (t.be ? 'Yes' : 'No') : ''
+        t.r15 ? (t.be ? 'Yes' : 'No') : ''
       ];
     });
     const csv = [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
@@ -804,14 +858,14 @@
       const outcomeLabel = o ? o.title : (t.scenario || '');
       const rNum = Number(t.r) || 0;
       const rLabel = (rNum > 0 ? '+' : '') + (Math.round(rNum*100)/100) + 'R';
-      const beLabel = t.r2 ? (t.be ? 'Yes' : 'No') : '—';
+      const beLabel = t.r15 ? (t.be ? 'Yes' : 'No') : '—';
       return `<tr>
         <td>${i + 1}</td>
         <td>${ts}</td>
+        <td>${t.strategy || ''}</td>
         <td>${outcomeLabel}</td>
         <td>${rLabel}</td>
         <td>${t.r15 ? 'Yes' : 'No'}</td>
-        <td>${t.r2 ? 'Yes' : 'No'}</td>
         <td>${t.r3 ? 'Yes' : 'No'}</td>
         <td>${beLabel}</td>
       </tr>`;
@@ -831,6 +885,7 @@
 
   loadLocal();
   renderOutcomeList();
+  renderStrategyToggle();
   render();
 })();
 </script>
