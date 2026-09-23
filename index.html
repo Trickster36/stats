@@ -172,8 +172,6 @@
   .toggle.disabled{opacity:0.4;cursor:not-allowed;}
   .toggle-grid.cols-2{grid-template-columns:repeat(2,1fr);}
 
-  .strategy-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
-  .strategy-stats .stat .value{font-size:1.3rem;}
 
   .r-input-wrap{margin-bottom:14px;}
   .r-input-wrap label{display:block;font-size:0.78rem;color:var(--muted);margin-bottom:6px;}
@@ -394,25 +392,7 @@
   </div>
 
   <div class="card">
-    <h2>By strategy</h2>
-    <div class="strategy-stats" id="strategyStats"></div>
-  </div>
-
-  <div class="card">
     <h2>Log a trade</h2>
-    <div class="r-input-wrap">
-      <label>Setup</label>
-      <div class="toggle-grid cols-2" id="strategyToggle">
-        <div class="toggle" data-strategy="A">
-          <span class="t-label">Strategy</span>
-          <span class="t-state">A</span>
-        </div>
-        <div class="toggle" data-strategy="B">
-          <span class="t-label">Strategy</span>
-          <span class="t-state">B</span>
-        </div>
-      </div>
-    </div>
     <div class="outcome-list" id="outcomeList"></div>
     <button class="add-btn" id="addTradeBtn">Add Trade</button>
   </div>
@@ -437,7 +417,6 @@
       <tr>
         <th>#</th>
         <th>Timestamp</th>
-        <th>Strategy</th>
         <th>Outcome</th>
         <th>R</th>
         <th>1.5R</th>
@@ -497,10 +476,9 @@
   ];
 
   let selectedOutcome = null;
-  let selectedStrategy = null;
 
   const state = {
-    trades: [], // each: {r15:bool, r3:bool, be:bool, r:number, scenario:string, strategy:'A'|'B', ts:number}
+    trades: [], // each: {r15:bool, r3:bool, be:bool, r:number, scenario:string, ts:number}
     settings: { owner:'', repo:'', path:'strategy-stats.json', branch:'main', token:'' },
     sha: null
   };
@@ -577,22 +555,6 @@
     `;
     document.getElementById('milestoneBars').innerHTML = barsHtml;
 
-    const stratStatsHtml = ['A','B'].map(s => {
-      const trades = state.trades.filter(t=>t.strategy===s);
-      const n = trades.length;
-      const r = trades.reduce((sum,t)=> sum + (Number(t.r)||0), 0);
-      const wins = trades.filter(t=>(Number(t.r)||0) > 0).length;
-      const wr = n ? Math.round((wins/n)*100) : 0;
-      return `
-        <div class="stat">
-          <div class="label">Strategy ${s}</div>
-          <div class="value">${n} trade${n===1?'':'s'}</div>
-          <div class="sub">${(r>0?'+':'') + (Math.round(r*100)/100)}R · ${wr}% win rate</div>
-        </div>
-      `;
-    }).join('');
-    document.getElementById('strategyStats').innerHTML = stratStatsHtml;
-
     const listEl = document.getElementById('logList');
     if (!state.trades.length){
       listEl.innerHTML = '<div class="empty">No trades logged yet</div>';
@@ -603,7 +565,6 @@
         const rNum = Number(t.r)||0;
         const o = OUTCOMES.find(x=>x.id===t.scenario);
         tags.push(`<span class="tag ${rNum>0?'hit':(rNum<0?'loss':'')}">${(rNum>0?'+':'')}${Math.round(rNum*100)/100}R</span>`);
-        if (t.strategy) tags.push(`<span class="tag">Strategy ${t.strategy}</span>`);
         if (o) tags.push(`<span class="tag">${o.title}</span>`);
         else {
           tags.push(`<span class="tag ${t.r15?'hit':''}">1.5R</span>`);
@@ -646,31 +607,16 @@
     });
   }
 
-  function renderStrategyToggle(){
-    document.querySelectorAll('#strategyToggle .toggle').forEach(el=>{
-      el.classList.toggle('on', el.getAttribute('data-strategy')===selectedStrategy);
-    });
-  }
-  document.querySelectorAll('#strategyToggle .toggle').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      selectedStrategy = el.getAttribute('data-strategy');
-      renderStrategyToggle();
-    });
-  });
-
   document.getElementById('addTradeBtn').addEventListener('click', ()=>{
-    if (!selectedOutcome || !selectedStrategy) return;
+    if (!selectedOutcome) return;
     const o = OUTCOMES.find(x=>x.id===selectedOutcome);
     state.trades.push({
       r15: o.r15, r3: o.r3, be: o.be,
       r: o.r, scenario: o.id,
-      strategy: selectedStrategy,
       ts: Date.now()
     });
     selectedOutcome = null;
-    selectedStrategy = null;
     renderOutcomeList();
-    renderStrategyToggle();
     persistLocal();
     render();
   });
@@ -820,14 +766,13 @@
   }
 
   function exportCsv(){
-    const header = ['#','Timestamp','Strategy','Outcome','R','1.5R Hit','3R Hit','BE After 1.5R'];
+    const header = ['#','Timestamp','Outcome','R','1.5R Hit','3R Hit','BE After 1.5R'];
     const rows = state.trades.map((t, i) => {
       const o = OUTCOMES.find(x => x.id === t.scenario);
       const ts = t.ts ? new Date(t.ts).toISOString() : '';
       return [
         i + 1,
         ts,
-        t.strategy || '',
         o ? o.title : (t.scenario || ''),
         Number(t.r) || 0,
         t.r15 ? 'Yes' : 'No',
@@ -862,7 +807,6 @@
       return `<tr>
         <td>${i + 1}</td>
         <td>${ts}</td>
-        <td>${t.strategy || ''}</td>
         <td>${outcomeLabel}</td>
         <td>${rLabel}</td>
         <td>${t.r15 ? 'Yes' : 'No'}</td>
@@ -870,7 +814,7 @@
         <td>${beLabel}</td>
       </tr>`;
     }).join('');
-    tbody.innerHTML = rowsHtml || `<tr><td colspan="8">No trades logged yet</td></tr>`;
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="7">No trades logged yet</td></tr>`;
 
     const total = state.trades.length;
     const totalR = state.trades.reduce((sum,t)=> sum + (Number(t.r)||0), 0);
@@ -885,7 +829,6 @@
 
   loadLocal();
   renderOutcomeList();
-  renderStrategyToggle();
   render();
 })();
 </script>
