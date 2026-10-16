@@ -394,6 +394,11 @@
   <div class="card">
     <h2>Log a trade</h2>
     <div class="outcome-list" id="outcomeList"></div>
+    <div class="r-input-wrap" id="runnerWrap" style="display:none;">
+      <label for="runnerR">2nd trade exit (R)</label>
+      <input type="number" id="runnerR" step="0.01" inputmode="decimal" placeholder="e.g. 3">
+      <div class="hint" id="runnerHint"></div>
+    </div>
     <button class="add-btn" id="addTradeBtn">Add Trade</button>
   </div>
 
@@ -419,9 +424,9 @@
         <th>Timestamp</th>
         <th>Outcome</th>
         <th>R</th>
-        <th>1.5R</th>
+        <th>1R</th>
         <th>3R</th>
-        <th>BE after 1.5R</th>
+        <th>BE after 1R</th>
       </tr>
     </thead>
     <tbody id="printTableBody"></tbody>
@@ -467,15 +472,20 @@
 <script>
 (function(){
   // Two half-size trades run per setup (0.5R risk each, 1R combined risk).
-  // Trade 1 always exits at 1.5R. Trade 2 runs to 3R, and its SL moves to
-  // breakeven the moment trade 1's 1.5R target is hit.
+  // Trade 1 always exits at 1R. Trade 2 runs to its target (3R), and its SL moves to
+  // breakeven the moment trade 1's 1R target is hit.
+  // NOTE: the internal key "r15" now means "1R hit" (kept so saved data still loads).
+  const HALF = 0.5;
+  const TP1_R = 1;
+  const calcTotalR = (runnerR) => HALF * TP1_R + HALF * runnerR;
   const OUTCOMES = [
-    { id:'noHit',   title:"Reversed before 1.5R",     desc:"Never hit 1.5R — both trades stopped at initial SL", r:-1,   r15:false, r3:false, be:false },
-    { id:'beAfter', title:"Reversed after 1.5R (BE)",  desc:"Trade 1 secured 1.5R, trade 2's SL moved to BE and got stopped there", r:0.75, r15:true,  r3:false, be:true },
-    { id:'full',    title:"Hit both targets",          desc:"Trade 1 secured 1.5R, trade 2 ran to 3R — full runner", r:2.25, r15:true, r3:true, be:false }
+    { id:'noHit',   title:"Reversed before 1R",     desc:"Never hit 1R — both trades stopped at initial SL", r:-1, r15:false, r3:false, be:false },
+    { id:'beAfter', title:"Reversed after 1R (BE)",  desc:"Trade 1 secured 1R, trade 2's SL moved to BE and got stopped there", r:calcTotalR(0), r15:true, r3:false, be:true },
+    { id:'full',    title:"Hit both targets",        desc:"Trade 1 secured 1R, trade 2 ran to target — type its exit R below", r:null, custom:true, r15:true, r3:true, be:false }
   ];
 
   let selectedOutcome = null;
+  let runnerR = 3;
 
   const state = {
     trades: [], // each: {r15:bool, r3:bool, be:bool, r:number, scenario:string, ts:number}
@@ -538,7 +548,7 @@
     document.getElementById('maxDrawdown').textContent = maxDD ? ('-' + (Math.round(maxDD*100)/100) + 'R') : '0R';
 
     const bars = [
-      {label:'1.5R', count:c15, pct: pct(c15)},
+      {label:'1R', count:c15, pct: pct(c15)},
       {label:'3R', count:c3, pct: pct(c3)},
     ];
 
@@ -549,7 +559,7 @@
       </div>
     `).join('') + `
       <div class="bar-item">
-        <div class="bar-top"><span>Stopped at BE after 1.5R</span><span>${cBe} / ${c15} (${pctOf15R}%)</span></div>
+        <div class="bar-top"><span>Stopped at BE after 1R</span><span>${cBe} / ${c15} (${pctOf15R}%)</span></div>
         <div class="bar-track"><div class="bar-fill be" style="width:${pctOf15R}%"></div></div>
       </div>
     `;
@@ -567,7 +577,7 @@
         tags.push(`<span class="tag ${rNum>0?'hit':(rNum<0?'loss':'')}">${(rNum>0?'+':'')}${Math.round(rNum*100)/100}R</span>`);
         if (o) tags.push(`<span class="tag">${o.title}</span>`);
         else {
-          tags.push(`<span class="tag ${t.r15?'hit':''}">1.5R</span>`);
+          tags.push(`<span class="tag ${t.r15?'hit':''}">1R</span>`);
           tags.push(`<span class="tag ${t.r3?'hit':''}">3R</span>`);
           if (t.r15) tags.push(`<span class="tag ${t.be?'be':''}">${t.be?'BE hit':'No BE'}</span>`);
         }
@@ -596,7 +606,7 @@
           <span class="oc-title">${o.title}</span>
           <span class="oc-desc">${o.desc}</span>
         </div>
-        <span class="oc-r">${o.r>0?'+':''}${o.r}R</span>
+        <span class="oc-r">${o.custom ? 'type R' : ((o.r>0?'+':'') + (Math.round(o.r*100)/100) + 'R')}</span>
       </div>
     `).join('');
     listEl.querySelectorAll('.outcome').forEach(el=>{
@@ -605,17 +615,44 @@
         renderOutcomeList();
       });
     });
+    updateRunnerUI();
   }
+
+  function updateRunnerUI(){
+    const o = OUTCOMES.find(x=>x.id===selectedOutcome);
+    const wrap = document.getElementById('runnerWrap');
+    const input = document.getElementById('runnerR');
+    const hint = document.getElementById('runnerHint');
+    wrap.style.display = (o && o.custom) ? 'block' : 'none';
+    if (!(o && o.custom)) return;
+    if (document.activeElement !== input) input.value = (runnerR === null || isNaN(runnerR)) ? '' : runnerR;
+    if (runnerR === null || isNaN(runnerR)){
+      hint.textContent = 'Enter the R your 2nd trade exited at';
+    } else {
+      const tot = calcTotalR(runnerR);
+      hint.textContent = `Total = 0.5 × ${TP1_R}R + 0.5 × ${runnerR}R = ${(tot>0?'+':'') + (Math.round(tot*100)/100)}R`;
+    }
+  }
+  document.getElementById('runnerR').addEventListener('input', (e)=>{
+    const v = parseFloat(e.target.value);
+    runnerR = isNaN(v) ? null : v;
+    updateRunnerUI();
+  });
 
   document.getElementById('addTradeBtn').addEventListener('click', ()=>{
     if (!selectedOutcome) return;
     const o = OUTCOMES.find(x=>x.id===selectedOutcome);
-    state.trades.push({
+    if (o.custom && (runnerR === null || isNaN(runnerR))) return;
+    const trade = {
       r15: o.r15, r3: o.r3, be: o.be,
-      r: o.r, scenario: o.id,
+      r: o.custom ? Math.round(calcTotalR(runnerR)*100)/100 : o.r,
+      scenario: o.id,
       ts: Date.now()
-    });
+    };
+    if (o.custom){ trade.runnerR = runnerR; trade.r3 = runnerR >= 3; }
+    state.trades.push(trade);
     selectedOutcome = null;
+    runnerR = 3;
     renderOutcomeList();
     persistLocal();
     render();
@@ -766,7 +803,7 @@
   }
 
   function exportCsv(){
-    const header = ['#','Timestamp','Outcome','R','1.5R Hit','3R Hit','BE After 1.5R'];
+    const header = ['#','Timestamp','Outcome','R','1R Hit','3R Hit','BE After 1R'];
     const rows = state.trades.map((t, i) => {
       const o = OUTCOMES.find(x => x.id === t.scenario);
       const ts = t.ts ? new Date(t.ts).toISOString() : '';
